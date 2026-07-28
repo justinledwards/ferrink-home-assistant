@@ -5,6 +5,12 @@ jailbroken Kindle devices. It talks directly to a Home Assistant server,
 renders with Slint's software renderer, and writes to the Kindle framebuffer
 without a browser or web view.
 
+<p align="center">
+  <img src="docs/images/dashboard-demo.png" width="520" alt="Ferrink Home Assistant dashboard showing weather, thermostats, and e-ink touch controls">
+</p>
+
+<p align="center"><sub>Host-rendered Slint demo data captured through the embedded MCP server.</sub></p>
+
 The dashboard includes:
 
 - five thermostat summaries with set-point, HVAC mode, and fan controls;
@@ -94,6 +100,24 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 
 Kindle release builds must use `cargo zigbuild`; a host sysroot is not an
 equivalent substitute for the target C headers and ABI.
+
+### Slint MCP inspection
+
+Slint 1.17.1 includes an optional embedded MCP server for inspecting the UI,
+simulating input, and capturing screenshots. Run the dashboard with built-in
+demo data and the headless software renderer like this:
+
+```sh
+SLINT_EMIT_DEBUG_INFO=1 \
+SLINT_MCP_PORT=9315 \
+SLINT_BACKEND=headless-software \
+SLINT_DASHBOARD_DEMO=1 \
+cargo run -p ferrink-home-assistant --features slint/mcp
+```
+
+Connect an MCP client to `http://127.0.0.1:9315/mcp`. Keep `mcp` as a
+command-line feature for development; it is not enabled in Kindle release
+builds.
 
 ## Credits and licensing
 
