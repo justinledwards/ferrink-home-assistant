@@ -1,0 +1,636 @@
+export struct ThermostatData {
+    name: string,
+    current: string,
+    target: string,
+    state: string,
+    available: bool,
+}
+
+export struct LightData {
+    name: string,
+    on: bool,
+    available: bool,
+}
+
+export struct CalendarData {
+    date: string,
+    time: string,
+    summary: string,
+    calendar: string,
+}
+
+component ControlButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    callback activated();
+
+    border-width: 2px;
+    border-color: black;
+    background: root.enabled && (touch.pressed || root.active) ? black : white;
+
+    touch := TouchArea {
+        clicked => { if root.enabled { root.activated(); } }
+    }
+
+    Text {
+        text: root.label;
+        color: root.enabled && (touch.pressed || root.active) ? white : black;
+        font-size: root.label == "−" || root.label == "+" ? 48px : 16px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component NavigationButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback activated();
+
+    border-width: 2px;
+    border-color: black;
+    background: root.active || touch.pressed ? black : white;
+
+    touch := TouchArea {
+        clicked => { root.activated(); }
+    }
+
+    Text {
+        text: root.label;
+        color: root.active || touch.pressed ? white : black;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ScreenRefreshButton inherits Rectangle {
+    callback activated();
+
+    border-width: touch.pressed ? 4px : 2px;
+    border-color: black;
+    background: white;
+
+    touch := TouchArea {
+        clicked => { root.activated(); }
+    }
+
+    Image {
+        x: 12px;
+        y: 14px;
+        width: 32px;
+        height: 32px;
+        source: @image-url("icons/refresh-ccw-dot.svg");
+        image-fit: contain;
+    }
+
+    Text {
+        x: 48px;
+        width: parent.width - 54px;
+        height: parent.height;
+        text: "CLEAR";
+        color: black;
+        font-size: 14px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ThermostatRow inherits Rectangle {
+    in property <ThermostatData> room;
+    in property <int> row-index;
+    in property <bool> selected: false;
+    callback row-activated(int);
+
+    background: root.selected ? black : white;
+
+    TouchArea {
+        clicked => { root.row-activated(root.row-index); }
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: root.selected ? white : black;
+    }
+
+    Text {
+        x: 16px;
+        y: 8px;
+        width: 330px;
+        height: 34px;
+        text: root.room.name;
+        color: root.selected ? white : black;
+        font-size: 25px;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 17px;
+        y: 46px;
+        width: 330px;
+        height: 20px;
+        text: root.room.available ? root.room.state : "UNAVAILABLE";
+        color: root.selected ? white : black;
+        font-size: 14px;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 365px;
+        y: 2px;
+        width: 135px;
+        height: 70px;
+        text: root.room.current;
+        color: root.selected ? white : black;
+        font-size: 52px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 530px;
+        y: 5px;
+        width: 136px;
+        height: 66px;
+        text: root.room.target;
+        color: root.selected ? white : black;
+        font-size: 39px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component LightTile inherits Rectangle {
+    in property <LightData> light;
+    in property <int> light-index;
+    callback toggled(int);
+
+    border-width: 2px;
+    border-color: black;
+    background: root.light.on ? black : white;
+
+    TouchArea {
+        clicked => { if root.light.available { root.toggled(root.light-index); } }
+    }
+
+    Text {
+        x: 14px;
+        y: 7px;
+        width: parent.width - 88px;
+        height: 29px;
+        text: root.light.name;
+        color: root.light.on ? white : black;
+        font-size: 18px;
+        font-weight: 700;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 14px;
+        y: 37px;
+        width: parent.width - 88px;
+        height: 21px;
+        text: !root.light.available ? "UNAVAILABLE" : root.light.on ? "ON" : "OFF";
+        color: root.light.on ? white : black;
+        font-size: 14px;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: parent.width - 56px;
+        y: 8px;
+        width: 38px;
+        height: parent.height - 16px;
+        text: root.light.on ? "●" : "○";
+        color: root.light.on ? white : black;
+        font-size: 25px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component CalendarRow inherits Rectangle {
+    in property <CalendarData> event;
+
+    background: white;
+
+    Rectangle {
+        x: 0;
+        y: parent.height - 2px;
+        width: parent.width;
+        height: 2px;
+        background: black;
+    }
+
+    Text {
+        x: 0;
+        y: 14px;
+        width: 150px;
+        height: 27px;
+        text: root.event.date;
+        color: black;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    Text {
+        x: 0;
+        y: 47px;
+        width: 150px;
+        height: 24px;
+        text: root.event.time;
+        color: black;
+        font-size: 16px;
+        font-weight: 700;
+    }
+
+    Text {
+        x: 175px;
+        y: 11px;
+        width: parent.width - 175px;
+        height: 39px;
+        text: root.event.summary;
+        color: black;
+        font-size: 24px;
+        font-weight: 700;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 175px;
+        y: 55px;
+        width: parent.width - 175px;
+        height: 23px;
+        text: root.event.calendar;
+        color: black;
+        font-size: 15px;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+}
+
+export component AppWindow inherits Window {
+    width: 758px;
+    height: 1024px;
+    background: white;
+
+    in property <[ThermostatData]> thermostats;
+    in property <[LightData]> lights;
+    in property <[CalendarData]> calendar-events;
+    in-out property <int> current-page: 0;
+    in-out property <int> selected-index: 0;
+    in property <string> selected-name: "--";
+    in property <string> selected-target: "--";
+    in property <string> selected-mode: "--";
+    in property <bool> selected-supports-heat: false;
+    in property <bool> selected-supports-cool: false;
+    in property <bool> selected-supports-fan: false;
+    in property <string> selected-fan-mode: "--";
+    in property <string> outside-temperature: "--";
+    in property <string> outside-high: "HIGH --";
+    in property <string> outside-condition: "CONNECTING";
+    in property <string> weather-kind: "cloud";
+    in property <string> next-event-label: "NEXT EVENT";
+    in property <string> next-event-title: "LOADING CALENDAR";
+    in property <string> next-event-time: "--";
+    in property <string> battery-level: "--%";
+    in property <string> battery-kind: "battery";
+    in property <string> updated-text: "WAITING FOR HOME ASSISTANT";
+    in property <string> action-status: "TAP A ROOM TO CONTROL";
+    in property <string> lights-summary: "LOADING LIGHTS";
+    in property <bool> living-fan-on: false;
+    in property <bool> living-fan-available: false;
+    in-out property <bool> sleeping: false;
+
+    callback select-room(int);
+    callback change-target(int);
+    callback set-mode(string);
+    callback set-fan-mode(string);
+    callback toggle-living-fan();
+    callback toggle-light(int);
+    callback refresh();
+    callback clean-screen();
+    callback user-activity();
+    callback enter-sleep();
+    callback wake-from-sleep();
+    callback quit();
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: 5px;
+        background: black;
+    }
+
+    TouchArea {
+        x: 0;
+        y: 5px;
+        width: parent.width - 78px;
+        height: 78px;
+        clicked => { root.user-activity(); root.current-page = 2; }
+    }
+
+    Text {
+        x: 38px;
+        y: 12px;
+        width: parent.width - 128px;
+        height: 18px;
+        text: root.next-event-label;
+        color: black;
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    Text {
+        x: 38px;
+        y: 32px;
+        width: 390px;
+        height: 36px;
+        text: root.next-event-title;
+        color: black;
+        font-size: 22px;
+        font-weight: 700;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 438px;
+        y: 32px;
+        width: 100px;
+        height: 36px;
+        text: root.next-event-time;
+        color: black;
+        font-size: 18px;
+        font-weight: 700;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    if root.battery-kind == "battery-charging": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/battery-charging.svg"); image-fit: contain; }
+    if root.battery-kind == "battery-full": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/battery-full.svg"); image-fit: contain; }
+    if root.battery-kind == "battery-medium": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/battery-medium.svg"); image-fit: contain; }
+    if root.battery-kind == "battery-low": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/battery-low.svg"); image-fit: contain; }
+    if root.battery-kind == "battery": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/battery.svg"); image-fit: contain; }
+    if root.battery-kind == "plug": Image { x: 552px; y: 34px; width: 34px; height: 30px; source: @image-url("icons/plug.svg"); image-fit: contain; }
+
+    Text {
+        x: 590px;
+        y: 32px;
+        width: 66px;
+        height: 36px;
+        text: root.battery-level;
+        color: black;
+        font-size: 17px;
+        font-weight: 700;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        x: parent.width - 66px;
+        y: 19px;
+        width: 44px;
+        height: 44px;
+        border-width: 2px;
+        border-color: black;
+        background: close-touch.pressed ? black : white;
+
+        close-touch := TouchArea {
+            clicked => { root.quit(); }
+        }
+
+        Text {
+            text: "×";
+            color: close-touch.pressed ? white : black;
+            font-size: 29px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.current-page == 0: Rectangle {
+        x: 0;
+        y: 84px;
+        width: root.width;
+        height: root.height - 84px;
+        background: white;
+
+        Text {
+            x: 38px;
+            y: 10px;
+            width: 180px;
+            height: 21px;
+            text: "OUTSIDE";
+            color: black;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        Text {
+            x: 33px;
+            y: 28px;
+            width: 300px;
+            height: 116px;
+            text: root.outside-temperature;
+            color: black;
+            font-size: 104px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+
+        Text {
+            x: 260px;
+            y: 101px;
+            width: 150px;
+            height: 32px;
+            text: root.outside-high;
+            color: black;
+            font-size: 20px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+
+        if root.weather-kind == "sun": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/sun.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-sun": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-sun.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-moon": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-moon.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-rain": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-rain.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-rain-wind": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-rain-wind.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-lightning": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-lightning.svg"); image-fit: contain; }
+        if root.weather-kind == "snowflake": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/snowflake.svg"); image-fit: contain; }
+        if root.weather-kind == "cloud-fog": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/cloud-fog.svg"); image-fit: contain; }
+        if root.weather-kind == "moon": Image { x: 520px; y: 20px; width: 120px; height: 105px; source: @image-url("icons/moon.svg"); image-fit: contain; }
+
+        Text {
+            x: 392px;
+            y: 126px;
+            width: parent.width - 430px;
+            height: 22px;
+            text: root.outside-condition;
+            color: black;
+            font-size: 16px;
+            font-weight: 700;
+            horizontal-alignment: right;
+        }
+
+        Rectangle { x: 38px; y: 151px; width: parent.width - 76px; height: 3px; background: black; }
+
+        Text { x: 38px; y: 173px; width: 260px; height: 24px; text: "THERMOSTATS"; color: black; font-size: 17px; font-weight: 700; letter-spacing: 2px; }
+        Text { x: 403px; y: 175px; width: 135px; height: 20px; text: "NOW"; color: black; font-size: 14px; font-weight: 700; horizontal-alignment: center; }
+        Text { x: 568px; y: 175px; width: 136px; height: 20px; text: "SET"; color: black; font-size: 14px; font-weight: 700; horizontal-alignment: center; }
+        Rectangle { x: 38px; y: 205px; width: parent.width - 76px; height: 1px; background: black; }
+
+        for room[index] in root.thermostats: ThermostatRow {
+            x: 38px;
+            y: 206px + index * 80px;
+            width: root.width - 76px;
+            height: 80px;
+            room: room;
+            row-index: index;
+            selected: root.selected-index == index;
+            row-activated(index) => { root.user-activity(); root.select-room(index); }
+        }
+
+        Rectangle { x: 38px; y: 627px; width: parent.width - 76px; height: 4px; background: black; }
+        Text { x: 38px; y: 642px; width: 280px; height: 22px; text: root.selected-name + " / " + root.selected-mode; color: black; font-size: 15px; font-weight: 700; overflow: elide; }
+        Text { x: 34px; y: 661px; width: 190px; height: 78px; text: root.selected-target; color: black; font-size: 62px; font-weight: 700; vertical-alignment: center; }
+
+        ControlButton { x: 236px; y: 662px; width: 78px; height: 78px; label: "−"; activated => { root.user-activity(); root.change-target(-1); } }
+        ControlButton { x: 324px; y: 662px; width: 78px; height: 78px; label: "+"; activated => { root.user-activity(); root.change-target(1); } }
+        ControlButton { x: 412px; y: 662px; width: 92px; height: 78px; label: "HEAT"; enabled: root.selected-supports-heat; active: root.selected-mode == "HEAT" || root.selected-mode == "HEATING"; activated => { root.user-activity(); root.set-mode("heat"); } }
+        ControlButton { x: 514px; y: 662px; width: 92px; height: 78px; label: "COOL"; enabled: root.selected-supports-cool; active: root.selected-mode == "COOL" || root.selected-mode == "COOLING"; activated => { root.user-activity(); root.set-mode("cool"); } }
+        ControlButton { x: 616px; y: 662px; width: 104px; height: 78px; label: "OFF"; active: root.selected-mode == "OFF"; activated => { root.user-activity(); root.set-mode("off"); } }
+
+        Text { x: 38px; y: 754px; width: 92px; height: 54px; text: "FAN\nSPEED"; color: black; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+        ControlButton { x: 138px; y: 752px; width: 76px; height: 58px; label: "AUTO"; enabled: root.selected-supports-fan; active: root.selected-fan-mode == "AUTO"; activated => { root.user-activity(); root.set-fan-mode("Auto"); } }
+        ControlButton { x: 222px; y: 752px; width: 76px; height: 58px; label: "LOW"; enabled: root.selected-supports-fan; active: root.selected-fan-mode == "LOW"; activated => { root.user-activity(); root.set-fan-mode("Low"); } }
+        ControlButton { x: 306px; y: 752px; width: 76px; height: 58px; label: "MED"; enabled: root.selected-supports-fan; active: root.selected-fan-mode == "MED"; activated => { root.user-activity(); root.set-fan-mode("Med"); } }
+        ControlButton { x: 390px; y: 752px; width: 76px; height: 58px; label: "HIGH"; enabled: root.selected-supports-fan; active: root.selected-fan-mode == "HIGH"; activated => { root.user-activity(); root.set-fan-mode("High"); } }
+        ControlButton { x: 482px; y: 752px; width: 238px; height: 58px; label: root.living-fan-available ? root.living-fan-on ? "LIVING FAN  ON" : "LIVING FAN  OFF" : "LIVING FAN  --"; enabled: root.living-fan-available; active: root.living-fan-on; activated => { root.user-activity(); root.toggle-living-fan(); } }
+
+        Text { x: 38px; y: 822px; width: 540px; height: 24px; text: root.action-status; color: black; font-size: 15px; font-weight: 700; overflow: elide; }
+        Rectangle {
+            x: parent.width - 152px; y: 814px; width: 114px; height: 40px; border-width: 2px; border-color: black; background: refresh-touch.pressed ? black : white;
+            refresh-touch := TouchArea { clicked => { root.user-activity(); root.refresh(); } }
+            Text { text: "REFRESH"; color: refresh-touch.pressed ? white : black; font-size: 14px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+
+    if root.current-page == 1: Rectangle {
+        x: 0;
+        y: 84px;
+        width: root.width;
+        height: root.height - 84px;
+        background: white;
+
+        Text { x: 38px; y: 18px; width: 230px; height: 30px; text: "LIGHTS"; color: black; font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+        Text { x: 330px; y: 21px; width: 390px; height: 24px; text: root.lights-summary; color: black; font-size: 15px; font-weight: 700; horizontal-alignment: right; }
+        Rectangle { x: 38px; y: 55px; width: parent.width - 76px; height: 3px; background: black; }
+
+        for light[index] in root.lights: LightTile {
+            x: index < 10 ? 38px : 390px;
+            y: 72px + (index < 10 ? index : index - 10) * 74px;
+            width: 330px;
+            height: 66px;
+            light: light;
+            light-index: index;
+            toggled(index) => { root.user-activity(); root.toggle-light(index); }
+        }
+    }
+
+    if root.current-page == 2: Rectangle {
+        x: 0;
+        y: 84px;
+        width: root.width;
+        height: root.height - 84px;
+        background: white;
+
+        Text { x: 38px; y: 18px; width: 260px; height: 30px; text: "CALENDAR"; color: black; font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+        Text { x: 400px; y: 21px; width: 320px; height: 24px; text: "NEXT 30 DAYS"; color: black; font-size: 15px; font-weight: 700; horizontal-alignment: right; }
+        Rectangle { x: 38px; y: 55px; width: parent.width - 76px; height: 3px; background: black; }
+
+        for event[index] in root.calendar-events: CalendarRow {
+            x: 38px;
+            y: 68px + index * 110px;
+            width: root.width - 76px;
+            height: 110px;
+            event: event;
+        }
+
+        if root.calendar-events.length == 0: Text {
+            x: 38px; y: 105px; width: parent.width - 76px; height: 50px; text: "NO UPCOMING EVENTS"; color: black; font-size: 24px; font-weight: 700;
+        }
+    }
+
+    NavigationButton { x: 38px; y: parent.height - 80px; width: 168px; height: 60px; label: "CLIMATE"; active: root.current-page == 0; activated => { root.user-activity(); root.current-page = 0; } }
+    NavigationButton { x: 222px; y: parent.height - 80px; width: 168px; height: 60px; label: "LIGHTS"; active: root.current-page == 1; activated => { root.user-activity(); root.current-page = 1; } }
+    NavigationButton { x: 406px; y: parent.height - 80px; width: 168px; height: 60px; label: "CALENDAR"; active: root.current-page == 2; activated => { root.user-activity(); root.current-page = 2; } }
+    ScreenRefreshButton { x: 608px; y: parent.height - 80px; width: 112px; height: 60px; activated => { root.user-activity(); root.clean-screen(); } }
+
+    if root.sleeping: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #eeeeee;
+
+        Rectangle {
+            x: 129px;
+            y: 400px;
+            width: 500px;
+            height: 224px;
+            background: white;
+            border-width: 3px;
+            border-color: black;
+
+            Text {
+                y: 48px;
+                width: parent.width;
+                height: 70px;
+                text: "DISPLAY RESTING";
+                color: black;
+                font-size: 34px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            Text {
+                y: 124px;
+                width: parent.width;
+                height: 48px;
+                text: "TAP TO WAKE";
+                color: black;
+                font-size: 22px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        TouchArea {
+            clicked => {
+                root.sleeping = false;
+                root.wake-from-sleep();
+                root.user-activity();
+            }
+        }
+    }
+}

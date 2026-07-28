@@ -1,0 +1,10 @@
+[workspace]
+members = ["app", "crates/slint-backend-kindle"]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

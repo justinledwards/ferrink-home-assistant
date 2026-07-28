@@ -1,0 +1,22 @@
+/target
+**/target
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+
+# Local scripts
+/scripts
+
+# Log files pulled from the device for analysis
+/*.log
+*.env

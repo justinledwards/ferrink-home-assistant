@@ -1,0 +1,19 @@
+{
+    "comment001": "Ferrink Home Assistant dashboard launcher",
+    "items": [
+        {
+            "name": "Ferrink Home Assistant",
+            "priority": -10,
+            "items": [
+                {
+                    "name": "Open dashboard",
+                    "action": "./bin/launch.sh",
+                    "exitmenu": true,
+                    "refresh": false,
+                    "status": false,
+                    "internal": "status Launching the Home Assistant dashboard"
+                }
+            ]
+        }
+    ]
+}
