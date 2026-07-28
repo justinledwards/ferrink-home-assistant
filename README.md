@@ -6,10 +6,12 @@ renders with Slint's software renderer, and writes to the Kindle framebuffer
 without a browser or web view.
 
 <p align="center">
-  <img src="docs/images/dashboard-demo.png" width="520" alt="Ferrink Home Assistant dashboard showing weather, thermostats, and e-ink touch controls">
+  <a href="docs/images/dashboard-demo.png"><img src="docs/images/dashboard-demo.png" width="31%" alt="Ferrink Home Assistant climate controls"></a>
+  <a href="docs/images/lights-demo.png"><img src="docs/images/lights-demo.png" width="31%" alt="Ferrink Home Assistant light controls"></a>
+  <a href="docs/images/calendar-demo.png"><img src="docs/images/calendar-demo.png" width="31%" alt="Ferrink Home Assistant calendar"></a>
 </p>
 
-<p align="center"><sub>Host-rendered Slint demo data captured through the embedded MCP server.</sub></p>
+<p align="center"><sub>Climate · Lights · Calendar — host-rendered Slint demo data captured through the embedded MCP server.</sub></p>
 
 The dashboard includes:
 
