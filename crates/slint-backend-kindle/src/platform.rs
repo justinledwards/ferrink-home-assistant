@@ -1,12 +1,14 @@
 use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use slint::Rgb8Pixel;
-use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+use slint::platform::software_renderer::{
+    LineBufferProvider, MinimalSoftwareWindow, RepaintBufferType,
+};
 use slint::platform::{EventLoopProxy, Platform, PlatformError, WindowAdapter, WindowEvent};
 
 use crate::cover::CoverInput;
@@ -14,7 +16,7 @@ use crate::framebuffer::Framebuffer;
 use crate::power::{arm_wakealarm, find_wakealarm, suspend_to_mem};
 use crate::touch::TouchInput;
 use crate::wakeup::{self, KindleEventLoopProxy, Queue, Wakeup};
-use crate::{OnCoverStateCallback, OnWakeCallback, WakeSchedule};
+use crate::{OnCoverStateCallback, OnWakeCallback, RenderBufferMode, WakeSchedule};
 
 // Animations get redrawn at most ~30 fps. E-ink can't keep up with anything
 // faster, so quicker wakes would just waste battery.
@@ -41,6 +43,7 @@ pub(crate) struct KindlePlatform {
     pub(crate) on_wake: OnWakeCallback,
     pub(crate) on_cover_state: OnCoverStateCallback,
     black_and_white: Arc<AtomicBool>,
+    render_buffer_mode: Arc<AtomicU8>,
     full_refresh_requested: Arc<AtomicBool>,
 }
 
@@ -50,6 +53,7 @@ impl KindlePlatform {
         on_wake: OnWakeCallback,
         on_cover_state: OnCoverStateCallback,
         black_and_white: Arc<AtomicBool>,
+        render_buffer_mode: Arc<AtomicU8>,
         full_refresh_requested: Arc<AtomicBool>,
     ) -> std::io::Result<Self> {
         let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
@@ -64,6 +68,7 @@ impl KindlePlatform {
             on_wake,
             on_cover_state,
             black_and_white,
+            render_buffer_mode,
             full_refresh_requested,
         })
     }
@@ -177,8 +182,11 @@ impl Platform for KindlePlatform {
         frame_buffer.refresh_full();
 
         let width = frame_buffer.width as usize;
-        let mut rgb_buffer = vec![Rgb8Pixel::default(); width * frame_buffer.height as usize];
+        let height = frame_buffer.height as usize;
+        let mut full_frame_buffer: Option<Vec<Rgb8Pixel>> = None;
+        let mut line_buffer = vec![Rgb8Pixel::default(); width];
         let mut gray_buffer = vec![0u8; width];
+        let mut active_render_mode = RenderBufferMode::load(&self.render_buffer_mode);
 
         let wakeup_read_fd = self.wakeup.read.as_raw_fd();
 
@@ -311,30 +319,46 @@ impl Platform for KindlePlatform {
 
             let black_and_white = self.black_and_white.load(Ordering::Relaxed);
             self.window.draw_if_needed(|renderer| {
-                let dirty = renderer.render(&mut rgb_buffer, width);
+                let requested_render_mode = RenderBufferMode::load(&self.render_buffer_mode);
+                if requested_render_mode != active_render_mode {
+                    renderer.set_repaint_buffer_type(RepaintBufferType::NewBuffer);
+                    active_render_mode = requested_render_mode;
+                }
+                let dirty = match requested_render_mode {
+                    RenderBufferMode::FullFrame => {
+                        let rgb_buffer = full_frame_buffer.get_or_insert_with(|| {
+                            vec![Rgb8Pixel::default(); width.saturating_mul(height)]
+                        });
+                        let dirty = renderer.render(rgb_buffer, width);
+                        let origin = dirty.bounding_box_origin();
+                        let size = dirty.bounding_box_size();
+                        let (x0, y0) = (origin.x as usize, origin.y as usize);
+                        let (w, h) = (size.width as usize, size.height as usize);
+
+                        for row in 0..h {
+                            let start = (y0 + row) * width + x0;
+                            rgb_to_gray(
+                                &rgb_buffer[start..start + w],
+                                &mut gray_buffer[..w],
+                                black_and_white,
+                            );
+                            frame_buffer.write_line(y0 + row, x0..x0 + w, &gray_buffer[..w]);
+                        }
+                        dirty
+                    }
+                    RenderBufferMode::Scanline => {
+                        full_frame_buffer = None;
+                        renderer.render_by_line(KindleLineBuffer {
+                            frame_buffer: &mut frame_buffer,
+                            rgb: &mut line_buffer,
+                            gray: &mut gray_buffer,
+                            black_and_white,
+                        })
+                    }
+                };
+                renderer.set_repaint_buffer_type(RepaintBufferType::ReusedBuffer);
                 let origin = dirty.bounding_box_origin();
                 let size = dirty.bounding_box_size();
-                let (x0, y0) = (origin.x as usize, origin.y as usize);
-                let (w, h) = (size.width as usize, size.height as usize);
-
-                // The E-ink screen only shows grayscale, so turn each RGB pixel into a single gray value.
-                // BT.601 luma weights (0.299, 0.587, 0.114) scaled by 256 and bitshifted to devide by 256.
-                let gray = &mut gray_buffer[..w];
-                for row in 0..h {
-                    let start = (y0 + row) * width + x0;
-                    let rgb = &rgb_buffer[start..start + w];
-                    for (g, p) in gray.iter_mut().zip(rgb.iter()) {
-                        let value =
-                            ((77 * p.r as u32 + 150 * p.g as u32 + 29 * p.b as u32) >> 8) as u8;
-                        // Black-and-white mode forces pure black/white based on threshold
-                        *g = if black_and_white {
-                            if value < 128 { 0x00 } else { 0xff }
-                        } else {
-                            value
-                        };
-                    }
-                    frame_buffer.write_line(y0 + row, x0..x0 + w, gray);
-                }
                 frame_buffer.refresh_region(origin, size);
             });
 
@@ -352,10 +376,73 @@ impl Platform for KindlePlatform {
     }
 }
 
+struct KindleLineBuffer<'a> {
+    frame_buffer: &'a mut Framebuffer,
+    rgb: &'a mut [Rgb8Pixel],
+    gray: &'a mut [u8],
+    black_and_white: bool,
+}
+
+impl LineBufferProvider for KindleLineBuffer<'_> {
+    type TargetPixel = Rgb8Pixel;
+
+    fn process_line(
+        &mut self,
+        line: usize,
+        range: std::ops::Range<usize>,
+        render_fn: impl FnOnce(&mut [Self::TargetPixel]),
+    ) {
+        let length = range.len();
+        let rgb = &mut self.rgb[..length];
+        render_fn(rgb);
+        rgb_to_gray(rgb, &mut self.gray[..length], self.black_and_white);
+        self.frame_buffer
+            .write_line(line, range, &self.gray[..length]);
+    }
+}
+
+fn rgb_to_gray(rgb: &[Rgb8Pixel], gray: &mut [u8], black_and_white: bool) {
+    debug_assert_eq!(rgb.len(), gray.len());
+    for (destination, pixel) in gray.iter_mut().zip(rgb) {
+        // BT.601 luma weights scaled by 256 for an integer conversion.
+        let value = ((77 * u32::from(pixel.r) + 150 * u32::from(pixel.g) + 29 * u32::from(pixel.b))
+            >> 8) as u8;
+        *destination = if black_and_white {
+            if value < 128 { 0x00 } else { 0xff }
+        } else {
+            value
+        };
+    }
+}
+
 fn duration_to_ms(d: Duration) -> libc::c_int {
     // Round up to at least 1 ms. A timeout of 0 makes poll skip the wait
     // entirely, which would spin the CPU if a tiny timer kept re-firing.
     d.as_millis().clamp(1, libc::c_int::MAX as u128) as libc::c_int
+}
+
+#[cfg(test)]
+mod pixel_tests {
+    use super::*;
+
+    #[test]
+    fn rgb_conversion_supports_gray_and_bilevel_output() {
+        let rgb = [
+            Rgb8Pixel { r: 0, g: 0, b: 0 },
+            Rgb8Pixel {
+                r: 255,
+                g: 255,
+                b: 255,
+            },
+            Rgb8Pixel { r: 255, g: 0, b: 0 },
+        ];
+        let mut gray = [0; 3];
+        rgb_to_gray(&rgb, &mut gray, false);
+        assert_eq!(gray, [0, 255, 76]);
+
+        rgb_to_gray(&rgb, &mut gray, true);
+        assert_eq!(gray, [0, 255, 0]);
+    }
 }
 
 #[cfg(test)]

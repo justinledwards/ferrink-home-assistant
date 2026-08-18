@@ -30,7 +30,7 @@ use slint::platform::software_renderer::MinimalSoftwareWindow;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -57,6 +57,29 @@ pub struct WakeSchedule {
 pub struct NoSchedule;
 pub struct Scheduled;
 
+/// Memory strategy used by Slint's software renderer.
+///
+/// [`RenderBufferMode::FullFrame`] keeps a full RGB canvas and is faster when
+/// memory is plentiful. [`RenderBufferMode::Scanline`] renders dirty spans one
+/// row at a time and avoids the multi-megabyte canvas on high-resolution
+/// Kindles.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(u8)]
+pub enum RenderBufferMode {
+    #[default]
+    FullFrame = 0,
+    Scanline = 1,
+}
+
+impl RenderBufferMode {
+    pub(crate) fn load(value: &AtomicU8) -> Self {
+        match value.load(Ordering::Relaxed) {
+            1 => Self::Scanline,
+            _ => Self::FullFrame,
+        }
+    }
+}
+
 /// Returned by [`install`]. Use it to add more fonts and configure power.
 ///
 /// A new backend is [`NoSchedule`]. Calling
@@ -70,6 +93,7 @@ pub struct KindleBackend<State = NoSchedule> {
     on_wake: OnWakeCallback,
     on_cover_state: OnCoverStateCallback,
     black_and_white: Arc<AtomicBool>,
+    render_buffer_mode: Arc<AtomicU8>,
     full_refresh_requested: Arc<AtomicBool>,
     _state: PhantomData<State>,
 }
@@ -101,6 +125,18 @@ impl<State> KindleBackend<State> {
         self.black_and_white.store(enabled, Ordering::Relaxed);
     }
 
+    /// Select whether software rendering uses a full RGB frame or one scanline.
+    ///
+    /// A mode change forces one complete repaint so the newly selected buffer
+    /// strategy starts with a coherent image. Scanline mode is intended for
+    /// memory-constrained readers; full-frame mode trades RAM for throughput.
+    pub fn set_render_buffer_mode(&self, mode: RenderBufferMode) {
+        let previous = self.render_buffer_mode.swap(mode as u8, Ordering::Relaxed);
+        if previous != mode as u8 {
+            self.window.request_redraw();
+        }
+    }
+
     /// Request a slow, full-screen GC16 update after the next rendered frame.
     ///
     /// Normal Slint redraws use partial updates for responsiveness. This full
@@ -127,6 +163,7 @@ impl<State> KindleBackend<State> {
             on_wake: self.on_wake,
             on_cover_state: self.on_cover_state,
             black_and_white: self.black_and_white,
+            render_buffer_mode: self.render_buffer_mode,
             full_refresh_requested: self.full_refresh_requested,
             _state: PhantomData,
         }
@@ -209,12 +246,14 @@ pub fn install(font_data: &[u8]) -> Result<KindleBackend, slint::PlatformError> 
     let on_wake: OnWakeCallback = Rc::new(RefCell::new(None));
     let on_cover_state: OnCoverStateCallback = Rc::new(RefCell::new(None));
     let black_and_white = Arc::new(AtomicBool::new(false));
+    let render_buffer_mode = Arc::new(AtomicU8::new(RenderBufferMode::default() as u8));
     let full_refresh_requested = Arc::new(AtomicBool::new(false));
     let platform = KindlePlatform::new(
         wake_schedule.clone(),
         on_wake.clone(),
         on_cover_state.clone(),
         black_and_white.clone(),
+        render_buffer_mode.clone(),
         full_refresh_requested.clone(),
     )
     .map_err(|e| slint::PlatformError::Other(format!("failed to init Kindle platform: {e}")))?;
@@ -227,6 +266,7 @@ pub fn install(font_data: &[u8]) -> Result<KindleBackend, slint::PlatformError> 
         on_wake,
         on_cover_state,
         black_and_white,
+        render_buffer_mode,
         full_refresh_requested,
         _state: PhantomData,
     })
