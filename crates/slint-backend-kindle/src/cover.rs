@@ -54,12 +54,16 @@ fn decoded_lid_state(kind: u16, code: u16, value: i32) -> Option<bool> {
         return None;
     }
     match value {
-        // The reviewed KOA3 hall sensor asserts SW_LID while the cover is
-        // open and clears it when the magnet closes the cover.
-        0 => Some(true),
-        1 => Some(false),
+        0 => Some(lid_switch_active_is_closed(false)),
+        1 => Some(lid_switch_active_is_closed(true)),
         _ => None,
     }
+}
+
+const fn lid_switch_active_is_closed(active: bool) -> bool {
+    // The reviewed KOA3 hall sensor asserts SW_LID while the cover is open
+    // and clears it when the magnet closes the cover.
+    !active
 }
 
 pub(crate) struct CoverInput {
@@ -149,7 +153,7 @@ impl CoverInput {
         if result < 0 {
             Err(std::io::Error::last_os_error())
         } else {
-            Ok(switch_bits[0] & 1 != 0)
+            Ok(lid_switch_active_is_closed(switch_bits[0] & 1 != 0))
         }
     }
 
@@ -218,7 +222,7 @@ impl Drop for CoverInput {
 
 #[cfg(test)]
 mod tests {
-    use super::decoded_lid_state;
+    use super::{decoded_lid_state, lid_switch_active_is_closed};
 
     #[test]
     fn only_lid_switch_open_and_close_values_are_accepted() {
@@ -227,5 +231,11 @@ mod tests {
         for (kind, code, value) in [(5, 0, -1), (5, 0, 2), (5, 1, 1), (1, 0, 1)] {
             assert_eq!(decoded_lid_state(kind, code, value), None);
         }
+    }
+
+    #[test]
+    fn initial_switch_bitmap_uses_reviewed_koa3_polarity() {
+        assert!(lid_switch_active_is_closed(false));
+        assert!(!lid_switch_active_is_closed(true));
     }
 }
