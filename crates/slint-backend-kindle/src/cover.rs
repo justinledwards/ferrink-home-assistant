@@ -54,8 +54,10 @@ fn decoded_lid_state(kind: u16, code: u16, value: i32) -> Option<bool> {
         return None;
     }
     match value {
-        0 => Some(false),
-        1 => Some(true),
+        // The reviewed KOA3 hall sensor asserts SW_LID while the cover is
+        // open and clears it when the magnet closes the cover.
+        0 => Some(true),
+        1 => Some(false),
         _ => None,
     }
 }
@@ -220,8 +222,8 @@ mod tests {
 
     #[test]
     fn only_lid_switch_open_and_close_values_are_accepted() {
-        assert_eq!(decoded_lid_state(5, 0, 0), Some(false));
-        assert_eq!(decoded_lid_state(5, 0, 1), Some(true));
+        assert_eq!(decoded_lid_state(5, 0, 0), Some(true));
+        assert_eq!(decoded_lid_state(5, 0, 1), Some(false));
         for (kind, code, value) in [(5, 0, -1), (5, 0, 2), (5, 1, 1), (1, 0, 1)] {
             assert_eq!(decoded_lid_state(kind, code, value), None);
         }
