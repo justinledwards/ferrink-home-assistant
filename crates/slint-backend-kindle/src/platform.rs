@@ -9,11 +9,12 @@ use slint::Rgb8Pixel;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{EventLoopProxy, Platform, PlatformError, WindowAdapter, WindowEvent};
 
+use crate::cover::CoverInput;
 use crate::framebuffer::Framebuffer;
 use crate::power::{arm_wakealarm, find_wakealarm, suspend_to_mem};
 use crate::touch::TouchInput;
 use crate::wakeup::{self, KindleEventLoopProxy, Queue, Wakeup};
-use crate::{OnWakeCallback, WakeSchedule};
+use crate::{OnCoverStateCallback, OnWakeCallback, WakeSchedule};
 
 // Animations get redrawn at most ~30 fps. E-ink can't keep up with anything
 // faster, so quicker wakes would just waste battery.
@@ -38,6 +39,7 @@ pub(crate) struct KindlePlatform {
     quit_flag: Arc<AtomicBool>,
     pub(crate) wake_schedule: Arc<Mutex<Option<WakeSchedule>>>,
     pub(crate) on_wake: OnWakeCallback,
+    pub(crate) on_cover_state: OnCoverStateCallback,
     black_and_white: Arc<AtomicBool>,
     full_refresh_requested: Arc<AtomicBool>,
 }
@@ -46,6 +48,7 @@ impl KindlePlatform {
     pub(crate) fn new(
         wake_schedule: Arc<Mutex<Option<WakeSchedule>>>,
         on_wake: OnWakeCallback,
+        on_cover_state: OnCoverStateCallback,
         black_and_white: Arc<AtomicBool>,
         full_refresh_requested: Arc<AtomicBool>,
     ) -> std::io::Result<Self> {
@@ -59,6 +62,7 @@ impl KindlePlatform {
             quit_flag: Arc::new(AtomicBool::new(false)),
             wake_schedule,
             on_wake,
+            on_cover_state,
             black_and_white,
             full_refresh_requested,
         })
@@ -156,6 +160,18 @@ impl Platform for KindlePlatform {
         let mut touch_input =
             TouchInput::open(frame_buffer.width, frame_buffer.height, scale_factor)
                 .map_err(|e| PlatformError::Other(format!("failed to open touch input: {e}")))?;
+        let mut cover_input = match CoverInput::open() {
+            Ok(input) => input,
+            Err(error) => {
+                log::warn!("failed to inspect Kindle cover input: {error}");
+                None
+            }
+        };
+        if let Some(cover) = cover_input.as_ref()
+            && let Some(callback) = self.on_cover_state.borrow_mut().as_mut()
+        {
+            callback(cover.is_closed());
+        }
 
         frame_buffer.fill(0xff);
         frame_buffer.refresh_full();
@@ -192,6 +208,7 @@ impl Platform for KindlePlatform {
 
             // [0] - touch events file descriptor
             // [1] - wakeup pipe for userland application threads
+            // [2] - passive magnetic-cover events, or -1 when unavailable
             let mut file_descriptors = [
                 libc::pollfd {
                     fd: touch_input.fd(),
@@ -200,6 +217,11 @@ impl Platform for KindlePlatform {
                 },
                 libc::pollfd {
                     fd: wakeup_read_fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: cover_input.as_ref().map_or(-1, CoverInput::fd),
                     events: libc::POLLIN,
                     revents: 0,
                 },
@@ -231,6 +253,13 @@ impl Platform for KindlePlatform {
                     file_descriptors[0].revents, file_descriptors[1].revents
                 )));
             }
+            if cover_input.is_some() && file_descriptors[2].revents & err_bits != 0 {
+                log::warn!(
+                    "disabling Kindle cover indicator after poll error {:#x}",
+                    file_descriptors[2].revents
+                );
+                cover_input = None;
+            }
 
             // Empty the pipe before running closures so any new wakeup that arrives
             // while a closure runs still triggers another loop iteration.
@@ -250,6 +279,25 @@ impl Platform for KindlePlatform {
             // Check early for quit before doing more work
             if self.quit_flag.load(Ordering::SeqCst) {
                 break;
+            }
+
+            if file_descriptors[2].revents & libc::POLLIN != 0
+                && let Some(cover) = cover_input.as_mut()
+            {
+                match cover.read_transition() {
+                    Ok(Some(closed)) => {
+                        if let Some(callback) = self.on_cover_state.borrow_mut().as_mut() {
+                            callback(closed);
+                        }
+                        self.window.request_redraw();
+                        self.full_refresh_requested.store(true, Ordering::Release);
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        log::warn!("disabling Kindle cover indicator after read error: {error}");
+                        cover_input = None;
+                    }
+                }
             }
 
             // Touch activity counts as user interaction, so it resets the

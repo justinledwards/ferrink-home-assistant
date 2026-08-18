@@ -951,6 +951,23 @@ fn main() {
         }
     });
 
+    #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "musl"))]
+    kindle_backend.on_cover_state({
+        let weak = app.as_weak();
+        let kindle_backend = Rc::clone(&kindle_backend);
+        move |closed| {
+            let Some(app) = weak.upgrade() else { return };
+            app.set_sleeping(closed);
+            if closed {
+                app.invoke_enter_sleep();
+            } else {
+                app.invoke_wake_from_sleep();
+                app.invoke_user_activity();
+            }
+            kindle_backend.request_full_refresh();
+        }
+    });
+
     #[cfg(not(all(target_arch = "arm", target_os = "linux", target_env = "musl")))]
     app.on_clean_screen({
         let weak = app.as_weak();

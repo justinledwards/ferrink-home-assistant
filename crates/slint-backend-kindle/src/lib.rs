@@ -17,6 +17,7 @@
 //! }
 //! ```
 
+mod cover;
 mod framebuffer;
 mod platform;
 mod power;
@@ -34,6 +35,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub(crate) type OnWakeCallback = Rc<RefCell<Option<Box<dyn FnMut()>>>>;
+pub(crate) type OnCoverStateCallback = Rc<RefCell<Option<Box<dyn FnMut(bool)>>>>;
 
 /// How often to wake from suspend-to-RAM and how long to stay awake afterwards.
 ///
@@ -66,6 +68,7 @@ pub struct KindleBackend<State = NoSchedule> {
     window: Rc<MinimalSoftwareWindow>,
     wake_schedule: Arc<Mutex<Option<WakeSchedule>>>,
     on_wake: OnWakeCallback,
+    on_cover_state: OnCoverStateCallback,
     black_and_white: Arc<AtomicBool>,
     full_refresh_requested: Arc<AtomicBool>,
     _state: PhantomData<State>,
@@ -107,12 +110,22 @@ impl<State> KindleBackend<State> {
         self.full_refresh_requested.store(true, Ordering::Release);
     }
 
+    /// Run `callback` whenever the magnetic cover opens or closes.
+    ///
+    /// The callback runs on the Slint event-loop thread. `true` means closed.
+    /// Registering it does not grab the hall input or take suspend authority
+    /// from the Kindle power manager.
+    pub fn on_cover_state<F: FnMut(bool) + 'static>(&self, callback: F) {
+        *self.on_cover_state.borrow_mut() = Some(Box::new(callback));
+    }
+
     /// Switch state, keeping the same internals.
     fn into_state<Next>(self) -> KindleBackend<Next> {
         KindleBackend {
             window: self.window,
             wake_schedule: self.wake_schedule,
             on_wake: self.on_wake,
+            on_cover_state: self.on_cover_state,
             black_and_white: self.black_and_white,
             full_refresh_requested: self.full_refresh_requested,
             _state: PhantomData,
@@ -194,11 +207,13 @@ pub fn install(font_data: &[u8]) -> Result<KindleBackend, slint::PlatformError> 
 
     let wake_schedule = Arc::new(Mutex::new(None));
     let on_wake: OnWakeCallback = Rc::new(RefCell::new(None));
+    let on_cover_state: OnCoverStateCallback = Rc::new(RefCell::new(None));
     let black_and_white = Arc::new(AtomicBool::new(false));
     let full_refresh_requested = Arc::new(AtomicBool::new(false));
     let platform = KindlePlatform::new(
         wake_schedule.clone(),
         on_wake.clone(),
+        on_cover_state.clone(),
         black_and_white.clone(),
         full_refresh_requested.clone(),
     )
@@ -210,6 +225,7 @@ pub fn install(font_data: &[u8]) -> Result<KindleBackend, slint::PlatformError> 
         window,
         wake_schedule,
         on_wake,
+        on_cover_state,
         black_and_white,
         full_refresh_requested,
         _state: PhantomData,

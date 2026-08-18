@@ -589,39 +589,53 @@ export component AppWindow inherits Window {
         y: 0;
         width: root.width;
         height: root.height;
-        background: #eeeeee;
+        background: #eeece3;
 
         Rectangle {
-            x: 129px;
-            y: 400px;
-            width: 500px;
-            height: 224px;
-            background: white;
-            border-width: 3px;
+            x: 74px;
+            y: 377px;
+            width: 610px;
+            height: 270px;
+            background: #f7f6f0;
+            border-width: 4px;
             border-color: black;
 
             Text {
-                y: 48px;
+                y: 34px;
+                width: parent.width;
+                height: 26px;
+                text: "FERRINK";
+                color: #4b4a46;
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: 2px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            Text {
+                y: 91px;
                 width: parent.width;
                 height: 70px;
-                text: "DISPLAY RESTING";
+                text: "Sleeping";
                 color: black;
-                font-size: 34px;
+                font-size: 46px;
                 font-weight: 800;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
 
             Text {
-                y: 124px;
-                width: parent.width;
+                x: 38px;
+                y: 169px;
+                width: parent.width - 76px;
                 height: 48px;
-                text: "TAP TO WAKE";
-                color: black;
-                font-size: 22px;
-                font-weight: 600;
+                text: "Open the cover or press the power button to wake.";
+                color: #4b4a46;
+                font-size: 18px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                wrap: word-wrap;
             }
         }
 
